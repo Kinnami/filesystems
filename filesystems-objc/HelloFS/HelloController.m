@@ -23,18 +23,31 @@
 #import "HelloFuseFileSystem.h"
 #import <OSXFUSE/OSXFUSE.h>
 
+#include <signal.h>
+
 @implementation HelloController
 
 - (void)didMount:(NSNotification *)notification {
   NSDictionary* userInfo = [notification userInfo];
   NSString* mountPath = [userInfo objectForKey:kGMUserFileSystemMountPathKey];
+#if defined (__APPLE__)
   NSString* parentPath = [mountPath stringByDeletingLastPathComponent];
   [[NSWorkspace sharedWorkspace] selectFile:mountPath
                    inFileViewerRootedAtPath:parentPath];
+#else
+
+/* Note: GNUstep's NSWorkspace class only supports GUI applications. Not command line applications */
+	NSLog (@"Mounted HelloFS at '%@'", mountPath);
+#endif	/* defined (__APPLE__) */
 }
 
 - (void)didUnmount:(NSNotification*)notification {
+#if defined (__APPLE__)
   [[NSApplication sharedApplication] terminate:nil];
+#else
+	NSLog (@"Dismounted HelloFS");
+	raise (SIGTERM);
+#endif	/* defined (__APPLE__) */
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -48,12 +61,20 @@
   HelloFuseFileSystem* hello = [[HelloFuseFileSystem alloc] init];
   fs_ = [[GMUserFileSystem alloc] initWithDelegate:hello isThreadSafe:YES];
   NSMutableArray* options = [NSMutableArray array];
+#if defined (__APPLE__)
   [options addObject:@"rdonly"];
   [options addObject:@"volname=HelloFS"];
-  [options addObject:[NSString stringWithFormat:@"volicon=%@", 
+  [options addObject:[NSString stringWithFormat:@"volicon=%@",
     [[NSBundle mainBundle] pathForResource:@"Fuse" ofType:@"icns"]]];
+#else
+  [options addObject:@"ro"];
+#endif	/* defined (__APPLE__) */
   [fs_ mountAtPath:mountPath withOptions:options];
 }
+
+#if defined (__APPLE__)
+
+/* Note: GNUstep's NSApplication class only supports GUI applications. Not command line applications */
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -62,5 +83,7 @@
   [fs_ release];
   return NSTerminateNow;
 }
+
+#endif	/* defined (__APPLE__) */
 
 @end

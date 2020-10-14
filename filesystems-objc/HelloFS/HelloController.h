@@ -19,7 +19,15 @@
 //
 //  Created by ted on 1/3/08.
 //
+#if defined (__APPLE__)
 #import <Cocoa/Cocoa.h>
+#else
+#if defined (GNUSTEP)
+#import <Foundation/Foundation.h>
+#else
+#error "Needs implementation"
+#endif	/* defined (GNUSTEP) */
+#endif	/* defined (__APPLE__) */
 
 @class GMUserFileSystem;
 

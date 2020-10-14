@@ -37,6 +37,8 @@ static NSString *helloPath = @"/hello.txt";
   return nil;
 }
 
+#if defined (__APPLE__)
+
 #pragma optional Custom Icon
 
 - (NSDictionary *)finderAttributesAtPath:(NSString *)path 
@@ -58,5 +60,7 @@ static NSString *helloPath = @"/hello.txt";
   }
   return nil;
 }
+
+#endif	/* defined (__APPLE__) */
 
 @end
