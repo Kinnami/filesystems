@@ -19,9 +19,45 @@
 //
 //  Created by ted on 12/27/07.
 //
+#if defined (__APPLE__)
 #import <Cocoa/Cocoa.h>
+#else
+#if defined (GNUSTEP)
+#import <Foundation/Foundation.h>
+#import <OSXFUSE/OSXFUSE.h>
+#import "LoopbackFS.h"
+#else
+#error "Needs implementation"
+#endif	/* defined (GNUSTEP) */
+#endif	/* defined (__APPLE__) */
 
 int main(int argc, char *argv[])
 {
-    return NSApplicationMain(argc, (const char **) argv);
+#if defined (__APPLE__)
+    return NSApplicationMain(argc,  (const char **) argv);
+#else
+
+/* Note: GNUstep's NSApplication class only supports GUI applications. Not command line applications */
+	NSAutoreleasePool *	poAutoreleasePool;
+
+	poAutoreleasePool = [[NSAutoreleasePool alloc] init];
+
+#if 0
+	NSRunLoop *			poRunLoop;
+
+	poRunLoop = [NSRunLoop mainRunLoop];
+	[poRunLoop run];
+
+#else
+  GMUserFileSystem* fs_;
+  NSString* mountPath = @"/Volumes/loop";
+  LoopbackFS * loopbackFS = [[LoopbackFS alloc] initWithRootPath: @"/tmp"];	/* CJEC, 13-Oct-20: TODO: Provide some mechanism to choose the loopback root path */
+  fs_ = [[GMUserFileSystem alloc] initWithDelegate:loopbackFS isThreadSafe:YES];
+  NSMutableArray* options = [NSMutableArray array];
+  [fs_ mountAtPath:mountPath withOptions:options shouldForeground: YES detachNewThread: NO];	/* Note: shouldForeground: YES: Debug output is sent to stderr */
+#endif
+
+	[poAutoreleasePool release];
+	return 0;
+#endif	/* defined (__APPLE__) */
 }

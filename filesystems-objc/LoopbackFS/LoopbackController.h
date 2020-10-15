@@ -20,7 +20,15 @@
 //  Created by ted on 12/27/07.
 //
 
+#if defined (__APPLE__)
 #import <Cocoa/Cocoa.h>
+#else
+#if defined (GNUSTEP)
+#import <Foundation/Foundation.h>
+#else
+#error "Needs implementation"
+#endif	/* defined (GNUSTEP) */
+#endif	/* defined (__APPLE__) */
 
 @class GMUserFileSystem;
 @class LoopbackFS;

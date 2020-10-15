@@ -27,7 +27,15 @@
 // For example, you can mount "/tmp" in /Volumes/loop. Note: It is
 // probably not a good idea to mount "/" through this filesystem.
 
+#if defined (__APPLE__)
 #import <Cocoa/Cocoa.h>
+#else
+#if defined (GNUSTEP)
+#import <Foundation/Foundation.h>
+#else
+#error "Needs implementation"
+#endif	/* defined (GNUSTEP) */
+#endif	/* defined (__APPLE__) */
 
 @interface LoopbackFS : NSObject  {
   NSString* rootPath_;   // The local file-system path to mount.

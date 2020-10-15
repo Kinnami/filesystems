@@ -27,12 +27,39 @@
 // For example, you can mount "/tmp" in /Volumes/loop. Note: It is
 // probably not a good idea to mount "/" through this filesystem.
 
+#if defined (__linux__)
+#define _GNU_SOURCE
+#include <sys/syscall.h>
+#include <fcntl.h>
+#include <stdio.h>
+#endif	/* defined (__linux__) */
+
 #import <sys/xattr.h>
 #import <sys/stat.h>
+
+#if defined (__APPLE__)
 #import <sys/vnode.h>
+#endif	/* defined (__APPLE__) */
+
 #import "LoopbackFS.h"
+
 #import <OSXFUSE/OSXFUSE.h>
 #import "NSError+POSIX.h"
+
+#if defined (__linux__)
+/* renameat2(2) is not defined in glibc. See man renameat2(2)
+*/
+extern int	renameat2 (int olddirfd, const char *oldpath, int newdirfd, const char *newpath, unsigned int flags);
+
+int renameat2 (int olddirfd, const char *oldpath, int newdirfd, const char *newpath, unsigned int flags)
+	{
+	int		iResult;
+	
+	iResult = syscall (SYS_renameat2, olddirfd, oldpath, newdirfd, newpath, flags);
+	return iResult;
+	}
+
+#endif	/* defined (__linux__) */
 
 @implementation LoopbackFS
 
@@ -239,6 +266,7 @@
   NSNumber* num = (NSNumber *)userData;
   int fd = [num longValue];
 
+#if defined (__APPLE__)
   fstore_t fstore;
 
   fstore.fst_flags = 0;
@@ -263,6 +291,10 @@
     return NO;
   }
   return YES;
+#else
+#warning "Needs implementation"
+  return NO;
+#endif	/* defined (__APPLE__) */
 }
 
 - (BOOL)exchangeDataOfItemAtPath:(NSString *)path1
@@ -271,11 +303,26 @@
   NSString* p1 = [rootPath_ stringByAppendingString:path1];
   NSString* p2 = [rootPath_ stringByAppendingString:path2];
   int ret = 0;
+
+#if defined (__APPLE__)
+#if 0
+	/* CJEC, 13-Oct-20: renamex_np(2) is not available on older OS X/Darwin platform SDKs
+	*/
   if (renamex_np) {
     ret = renamex_np([p1 UTF8String], [p2 UTF8String], RENAME_SWAP);
   } else {
     ret = exchangedata([p1 UTF8String], [p2 UTF8String], 0);
   }
+#else
+  ret = exchangedata([p1 UTF8String], [p2 UTF8String], 0);
+#endif
+#else
+#if defined (__linux__)
+  ret = renameat2(AT_FDCWD, [p1 UTF8String], AT_FDCWD, [p2 UTF8String], RENAME_EXCHANGE);
+#else
+		ret = ENOSYS;
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if (ret < 0) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -347,6 +394,9 @@
       return NO;
     }
   }
+#if defined (__APPLE__) || defined (__FREEBSD__)
+/* OS X/Darwin and FreeBSD have flags
+*/
   NSNumber* flags = [attributes objectForKey:kGMUserFileSystemFileFlagsKey];
   if (flags != nil) {
     int rc = chflags([p UTF8String], [flags intValue]);
@@ -357,6 +407,7 @@
       return NO;
     }
   }
+#endif	/* defined (__APPLE__) || defined (__FREEBSD__) */
   return [[NSFileManager defaultManager] setAttributes:attributes
                                           ofItemAtPath:p
                                                  error:error];
@@ -367,7 +418,15 @@
 - (NSArray *)extendedAttributesOfItemAtPath:(NSString *)path error:(NSError **)error {
   NSString* p = [rootPath_ stringByAppendingString:path];
 
-  ssize_t size = listxattr([p UTF8String], nil, 0, XATTR_NOFOLLOW);
+#if defined (__APPLE__)
+  ssize_t size = listxattr([p UTF8String], NULL, 0, XATTR_NOFOLLOW);
+#else
+#if defined (__linux__)
+  ssize_t size = llistxattr([p UTF8String], NULL, 0);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if ( size < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -375,7 +434,15 @@
     return nil;
   }
   NSMutableData* data = [NSMutableData dataWithLength:size];
+#if defined (__APPLE__)
   size = listxattr([p UTF8String], [data mutableBytes], [data length], XATTR_NOFOLLOW);
+#else
+#if defined (__linux__)
+  size = llistxattr([p UTF8String], [data mutableBytes], [data length]);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if ( size < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -398,8 +465,17 @@
                                error:(NSError **)error {
   NSString* p = [rootPath_ stringByAppendingString:path];
 
+#if defined (__APPLE__)
   ssize_t size = getxattr([p UTF8String], [name UTF8String], nil, 0,
                          position, XATTR_NOFOLLOW);
+#else
+  position = 0;										/* Only OS X/Darwin has this argument */
+#if defined (__linux__)
+  ssize_t size = lgetxattr([p UTF8String], [name UTF8String], nil, 0);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if ( size < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -407,9 +483,19 @@
     return nil;
   }
   NSMutableData* data = [NSMutableData dataWithLength:size];
+#if defined (__APPLE__)
   size = getxattr([p UTF8String], [name UTF8String],
                   [data mutableBytes], [data length],
                   position, XATTR_NOFOLLOW);
+#else
+#if defined (__linux__)
+  size = getxattr([p UTF8String], [name UTF8String],
+                  [data mutableBytes], [data length]);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
+	
   if ( size < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -425,15 +511,27 @@
                     position:(off_t)position
                        options:(int)options
                        error:(NSError **)error {
+#if defined (__APPLE__)
   // Setting com.apple.FinderInfo happens in the kernel, so security related
   // bits are set in the options. We need to explicitly remove them or the call
   // to setxattr will fail.
   // TODO: Why is this necessary?
   options &= ~(XATTR_NOSECURITY | XATTR_NODEFAULT);
+#endif	/* defined (__APPLE__) */
   NSString* p = [rootPath_ stringByAppendingString:path];
+#if defined (__APPLE__)
   int ret = setxattr([p UTF8String], [name UTF8String],
                      [value bytes], [value length],
                      position, options | XATTR_NOFOLLOW);
+#else
+#if defined (__linux__)
+  int ret = lsetxattr([p UTF8String], [name UTF8String],
+                     [value bytes], [value length],
+                     options);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if ( ret < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];
@@ -447,7 +545,15 @@
                    ofItemAtPath:(NSString *)path
                           error:(NSError **)error {
   NSString* p = [rootPath_ stringByAppendingString:path];
+#if defined (__APPLE__)
   int ret = removexattr([p UTF8String], [name UTF8String], XATTR_NOFOLLOW);
+#else
+#if defined (__linux__)
+  int ret = lremovexattr([p UTF8String], [name UTF8String]);
+#else
+#error "Needs implementation"
+#endif	/* defined (__linux__) */
+#endif	/* defined (__APPLE__) */
   if ( ret < 0 ) {
     if ( error ) {
       *error = [NSError errorWithPOSIXCode:errno];

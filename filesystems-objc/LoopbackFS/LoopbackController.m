@@ -23,7 +23,11 @@
 #import "LoopbackFS.h"
 #import <OSXFUSE/OSXFUSE.h>
 
+#if defined (__APPLE__)
 #import <AvailabilityMacros.h>
+#endif	/* defined (__APPLE__) */
+
+#include <signal.h>
 
 @implementation LoopbackController
 
@@ -34,6 +38,7 @@
   NSError* error = [userInfo objectForKey:kGMUserFileSystemErrorKey];
   NSLog(@"kGMUserFileSystem Error: %@, userInfo=%@", error, [error userInfo]);
 
+#if defined (__APPLE__)
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     NSAlert* alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Mount Failed"];
@@ -42,6 +47,9 @@
     
     [[NSApplication sharedApplication] terminate:nil];
   }];
+#else
+  raise (SIGTERM);
+#endif	/* defined (__APPLE__) */
 }
 
 - (void)didMount:(NSNotification *)notification {
@@ -49,25 +57,38 @@
 
   NSDictionary* userInfo = [notification userInfo];
   NSString* mountPath = [userInfo objectForKey:kGMUserFileSystemMountPathKey];
+#if defined (__APPLE__)
   NSString* parentPath = [mountPath stringByDeletingLastPathComponent];
   [[NSWorkspace sharedWorkspace] selectFile:mountPath
                    inFileViewerRootedAtPath:parentPath];
+#else
+
+/* Note: GNUstep's NSWorkspace class only supports GUI applications. Not command line applications */
+	NSLog (@"Mounted LoopbackFS at '%@'", mountPath);
+#endif	/* defined (__APPLE__) */
 }
 
 - (void)didUnmount:(NSNotification*)notification {
   NSLog(@"Got didUnmount notification.");
 
+#if defined (__APPLE__)
   dispatch_async(dispatch_get_main_queue(), ^{
     [[NSApplication sharedApplication] terminate:nil];
   });
+#else
+	NSLog (@"Dismounted LoopbackFS");
+	raise (SIGTERM);
+#endif	/* defined (__APPLE__) */
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  int ret = 0;
+#if defined (__APPLE__)
   NSOpenPanel* panel = [NSOpenPanel openPanel];
   [panel setCanChooseFiles:NO];
   [panel setCanChooseDirectories:YES];
   [panel setAllowsMultipleSelection:NO];
-  int ret = 0;
+
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 1060
   ret = [panel runModalForDirectory:@"/tmp" file:nil types:nil];
 #else
@@ -97,6 +118,10 @@
   rootPath = [[paths objectAtIndex:0] path];
 #endif
 
+#else
+	NSString * rootPath = @"/tmp";			/* CJEC, 13-Oct-20: TODO: Provide some mechanism to choose the loopback root path */
+#endif	/* defined (__APPLE__) */
+
   NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
   [center addObserver:self selector:@selector(mountFailed:)
                  name:kGMUserFileSystemMountFailed object:nil];
@@ -112,6 +137,9 @@
 
   NSMutableArray* options = [NSMutableArray array];
 
+#if defined (__APPLE__)
+  /* Avoid mount options that are specific to the OS X/Darwin fuse implementation
+	*/
   NSString* volArg =
   [NSString stringWithFormat:@"volicon=%@",
    [[NSBundle mainBundle] pathForResource:@"LoopbackFS" ofType:@"icns"]];
@@ -124,9 +152,15 @@
   [options addObject:@"native_xattr"];
 
   [options addObject:@"volname=LoopbackFS"];
+#endif	/* defined (__APPLE__) */
+
   [fs_ mountAtPath:mountPath
        withOptions:options];
 }
+
+#if defined (__APPLE__)
+
+/* Note: GNUstep's NSApplication class only supports GUI applications. Not command line applications */
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -135,5 +169,7 @@
   [loop_ release];
   return NSTerminateNow;
 }
+
+#endif	/* defined (__APPLE__) */
 
 @end
